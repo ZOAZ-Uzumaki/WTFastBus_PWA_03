@@ -1,0 +1,2765 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Transit Nearby — PWA</title>
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <style>
+    :root {
+      --bg-start: #0a0e27;
+      --bg-end: #1a1f3a;
+      --glass-bg: rgba(255, 255, 255, 0.05);
+      --glass-border: rgba(255, 255, 255, 0.1);
+      --accent-primary: #00d4ff;
+      --accent-secondary: #7b2cbf;
+      --accent-gradient: linear-gradient(135deg, #00d4ff 0%, #7b2cbf 100%);
+      --text-primary: #ffffff;
+      --text-secondary: #a0aec0;
+      --text-muted: #64748b;
+      --success: #00ff88;
+      --warning: #ffb347;
+      --danger: #ff4757;
+      --shadow-glow: 0 0 20px rgba(0, 212, 255, 0.15);
+      --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.4);
+      --radius: 20px;
+      --radius-sm: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: linear-gradient(180deg, var(--bg-start) 0%, var(--bg-end) 100%);
+      background-attachment: fixed;
+      color: var(--text-primary);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* Animated background */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle at 20% 80%, rgba(0, 212, 255, 0.03) 0%, transparent 50%),
+                  radial-gradient(circle at 80% 20%, rgba(123, 44, 191, 0.03) 0%, transparent 50%);
+      animation: rotate 30s linear infinite;
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    @keyframes rotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    /* Header */
+    .app-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: linear-gradient(180deg, rgba(10, 14, 39, 0.95) 0%, rgba(10, 14, 39, 0.8) 100%);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--glass-border);
+      padding: 16px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+    }
+
+    .app-header h1 {
+      font-size: 24px;
+      font-weight: 700;
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -0.5px;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    /* Recent Stops */
+    .recent-stops {
+      margin-bottom: 20px;
+      animation: fadeIn 0.5s;
+    }
+
+    .recent-stops h3 {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .recent-list {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      padding-bottom: 5px;
+    }
+
+    .recent-item {
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-sm);
+      padding: 12px 16px;
+      min-width: 150px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .recent-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+      transform: translateY(-2px);
+      border-color: var(--accent-primary);
+    }
+
+    .recent-name {
+      font-weight: 600;
+      font-size: 14px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .recent-routes {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* Buttons */
+    .btn {
+      position: relative;
+      padding: 10px 18px;
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-sm);
+      background: var(--glass-bg);
+      color: var(--text-primary);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      overflow: hidden;
+      backdrop-filter: blur(10px);
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent-primary);
+      box-shadow: var(--shadow-glow);
+    }
+
+    .btn.primary {
+      background: var(--accent-gradient);
+      border: none;
+      font-weight: 600;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    }
+
+    .btn.small {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+
+    .btn.danger {
+      background: linear-gradient(135deg, rgba(255, 71, 87, 0.2) 0%, rgba(255, 71, 87, 0.1) 100%);
+      border-color: rgba(255, 71, 87, 0.5);
+      color: #ff6b7a;
+    }
+
+    .btn.danger:hover {
+      background: rgba(255, 71, 87, 0.3);
+      box-shadow: 0 0 20px rgba(255, 71, 87, 0.3);
+    }
+
+    /* Container */
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+      padding-bottom: 100px;
+    }
+
+    /* Status Panel */
+    .status-panel {
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 24px;
+      backdrop-filter: blur(20px);
+      box-shadow: var(--shadow-card);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .status-panel::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: var(--accent-gradient);
+      opacity: 0.5;
+    }
+
+    #locInfo {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--accent-primary);
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #coords {
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+
+    #notice {
+      font-size: 14px;
+      color: var(--text-secondary);
+      padding: 12px;
+      background: rgba(0, 212, 255, 0.05);
+      border-radius: var(--radius-sm);
+      border-left: 3px solid var(--accent-primary);
+    }
+
+    /* Route Badges */
+    .route-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      margin-right: 6px;
+      margin-bottom: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .route-blue {
+      background: rgba(59, 130, 246, 0.3);
+      border-color: rgba(59, 130, 246, 0.5);
+      color: #60a5fa;
+    }
+
+    .route-green {
+      background: rgba(16, 185, 129, 0.3);
+      border-color: rgba(16, 185, 129, 0.5);
+      color: #34d399;
+    }
+
+    .route-purple {
+      background: rgba(139, 92, 246, 0.3);
+      border-color: rgba(139, 92, 246, 0.5);
+      color: #a78bfa;
+    }
+
+    .route-yellow {
+      background: rgba(245, 158, 11, 0.3);
+      border-color: rgba(245, 158, 11, 0.5);
+      color: #fbbf24;
+    }
+
+    /* Stops Grid */
+    .stops-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 20px;
+    }
+
+    /* Stop Card */
+    .stop-card {
+      background: linear-gradient(145deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0.02) 100%);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius);
+      padding: 20px;
+      backdrop-filter: blur(20px);
+      box-shadow: var(--shadow-card);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
+      cursor: pointer;
+      animation: slideIn 0.4s ease-out backwards;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(30px) scale(0.95);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .stop-card:hover {
+      transform: translateY(-4px);
+      border-color: var(--accent-primary);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), var(--shadow-glow);
+    }
+
+    .stop-main {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+
+    .stop-title h3 {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+
+    .stop-number {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: 'Courier New', monospace;
+      background: rgba(0, 0, 0, 0.3);
+      padding: 2px 8px;
+      border-radius: 20px;
+      display: inline-block;
+    }
+
+    .stop-meta {
+      text-align: right;
+    }
+
+    .stop-distance {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .stop-next-time {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 16px;
+      border-radius: 50px;
+      font-weight: 800;
+      font-size: 16px;
+      min-width: 80px;
+      text-align: center;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+      transition: all 0.3s;
+    }
+
+    .stop-next-time.ok {
+      background: linear-gradient(135deg, rgba(0, 255, 136, 0.2) 0%, rgba(0, 255, 136, 0.05) 100%);
+      color: var(--success);
+      border: 1px solid rgba(0, 255, 136, 0.3);
+    }
+
+    .stop-next-time.warning {
+      background: linear-gradient(135deg, rgba(255, 179, 71, 0.2) 0%, rgba(255, 179, 71, 0.05) 100%);
+      color: var(--warning);
+      border: 1px solid rgba(255, 179, 71, 0.3);
+    }
+
+    .stop-next-time.soon {
+      background: linear-gradient(135deg, rgba(255, 71, 87, 0.2) 0%, rgba(255, 71, 87, 0.05) 100%);
+      color: var(--danger);
+      border: 1px solid rgba(255, 71, 87, 0.3);
+      animation: pulseBorder 2s infinite;
+    }
+
+    @keyframes pulseBorder {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.4); }
+      50% { box-shadow: 0 0 0 10px rgba(255, 71, 87, 0); }
+    }
+
+    .stop-routes {
+      margin-top: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    /* Details Modal */
+    .details-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 20px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--glass-border);
+    }
+
+    .details-header h2 {
+      font-size: 24px;
+      margin-bottom: 8px;
+    }
+
+    .details-section h3 {
+      font-size: 16px;
+      color: var(--text-secondary);
+      margin: 20px 0 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .arrivals-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .arrival-detail {
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: var(--radius-sm);
+      padding: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-left: 4px solid transparent;
+    }
+
+    .arrival-main {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .arrival-route {
+      font-size: 24px;
+      font-weight: 800;
+      min-width: 60px;
+      text-align: center;
+      padding: 8px;
+      border-radius: var(--radius-sm);
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .arrival-info {
+      flex: 1;
+    }
+
+    .arrival-time {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+
+    .variant {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+    }
+
+    .arrival-meta {
+      display: flex;
+      gap: 12px;
+      font-size: 12px;
+      color: var(--text-muted);
+      flex-wrap: wrap;
+    }
+
+    .estimated {
+      color: var(--success);
+    }
+
+    .scheduled {
+      color: var(--warning);
+    }
+
+    .bike-status {
+      color: var(--accent-primary);
+    }
+
+    /* Color borders for arrivals */
+    .route-blue-border { border-left-color: #3b82f6 !important; }
+    .route-green-border { border-left-color: #10b981 !important; }
+    .route-purple-border { border-left-color: #8b5cf6 !important; }
+    .route-yellow-border { border-left-color: #f59e0b !important; }
+
+    /* Settings Modal */
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.3s;
+      z-index: 1000;
+      padding: 20px;
+    }
+
+    .modal.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal-content {
+      background: linear-gradient(145deg, rgba(26, 31, 58, 0.95) 0%, rgba(10, 14, 39, 0.95) 100%);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius);
+      padding: 28px;
+      width: 100%;
+      max-width: 450px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      transform: scale(0.9);
+      transition: transform 0.3s;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .modal.open .modal-content {
+      transform: scale(1);
+    }
+
+    .modal-content h2 {
+      font-size: 24px;
+      margin-bottom: 24px;
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .setting-group {
+      margin-bottom: 24px;
+    }
+
+    .setting-group label {
+      display: block;
+      color: var(--text-secondary);
+      font-size: 14px;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+
+    /* Theme Grid */
+    .theme-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .theme-option {
+      aspect-ratio: 1;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 3px solid transparent;
+      transition: all 0.3s;
+      background: var(--theme-color);
+      box-shadow: 0 0 10px var(--theme-color);
+    }
+
+    .theme-option:hover {
+      transform: scale(1.1);
+    }
+
+    .theme-option.active {
+      border-color: white;
+      transform: scale(1.1);
+    }
+
+    #distanceValue {
+      color: var(--accent-primary);
+      font-weight: 700;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 6px;
+      border-radius: 3px;
+      background: rgba(255, 255, 255, 0.1);
+      outline: none;
+      -webkit-appearance: none;
+      margin-top: 12px;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--accent-gradient);
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+      border: 2px solid white;
+    }
+
+    /* Logs Panel */
+    .logs-panel {
+      margin-top: 16px;
+      padding: 12px;
+      background: rgba(0, 0, 0, 0.4);
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    #diag {
+      color: var(--text-muted);
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--accent-primary);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--accent-secondary);
+    }
+
+    /* Utility */
+    .muted {
+      color: var(--text-muted);
+    }
+
+    .small {
+      font-size: 12px;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    /* Language Selector */
+    .language-selector {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 300px;
+      overflow-y: auto;
+      margin-top: 8px;
+    }
+
+    .lang-option {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px;
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .lang-option:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--accent-primary);
+    }
+
+    .lang-option.active {
+      border-color: var(--accent-primary);
+      background: rgba(0, 212, 255, 0.1);
+    }
+
+    .lang-flag {
+      width: 24px;
+      height: 18px;
+      object-fit: cover;
+      border-radius: 2px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.3);
+    }
+
+    .lang-name {
+      flex: 1;
+      font-size: 14px;
+      color: var(--text-primary);
+    }
+
+    .lang-code {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: monospace;
+    }
+
+    .accent-value {
+      color: var(--accent-primary);
+      font-weight: 700;
+      font-size: 16px;
+      margin-left: 5px;
+    }
+
+    .danger-zone {
+      background: rgba(255, 71, 87, 0.05);
+      border-radius: var(--radius-sm);
+      padding: 15px;
+      margin-top: 20px;
+      border: 1px solid rgba(255, 71, 87, 0.2);
+    }
+
+    /* Bus Tracker Styles */
+    .bus-tracker-modal .modal-content {
+      max-width: 900px;
+      width: 95%;
+      padding: 0;
+      overflow: hidden;
+    }
+    
+    .bus-tracker-header {
+      padding: 20px;
+      background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+      color: white;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .bus-tracker-header h2 {
+      margin: 0;
+      font-size: 1.3rem;
+      -webkit-text-fill-color: white;
+    }
+    
+    .bus-tracker-info {
+      display: flex;
+      gap: 15px;
+      align-items: center;
+      font-size: 0.9rem;
+      margin-top: 5px;
+    }
+    
+    .bus-status-badge {
+      background: rgba(255,255,255,0.2);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+    
+    .bus-map-container {
+      height: 500px;
+      width: 100%;
+      position: relative;
+      background: #1a1f3a;
+    }
+    
+    .leaflet-popup-content-wrapper {
+      background: rgba(20, 20, 30, 0.95);
+      color: white;
+      border-radius: 12px;
+      border: 1px solid var(--glass-border);
+    }
+    
+    .leaflet-popup-tip {
+      background: rgba(20, 20, 30, 0.95);
+    }
+    
+    .bus-marker-container {
+      position: relative;
+      width: 40px;
+      height: 40px;
+      transition: all 0.3s ease;
+    }
+    
+    .bus-icon {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, #00d4ff, #0099cc);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      box-shadow: 0 4px 15px rgba(0, 212, 255, 0.5);
+      border: 3px solid white;
+      position: relative;
+      z-index: 2;
+      transition: transform 0.3s ease;
+    }
+    
+    .bus-icon.moving {
+      animation: bus-bounce 0.5s ease infinite alternate;
+    }
+    
+    @keyframes bus-bounce {
+      from { transform: translateY(0); }
+      to { transform: translateY(-3px); }
+    }
+    
+    .bus-direction-arrow {
+      position: absolute;
+      bottom: -8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-top: 8px solid #00d4ff;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+    }
+    
+    .stop-marker-icon {
+      width: 24px;
+      height: 24px;
+      background: #ff2d55;
+      border-radius: 50%;
+      border: 3px solid white;
+      box-shadow: 0 2px 10px rgba(255, 45, 85, 0.5);
+      position: relative;
+    }
+    
+    .stop-marker-icon::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 8px;
+      height: 8px;
+      background: white;
+      border-radius: 50%;
+    }
+    
+    .pulse-ring {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 40px;
+      height: 40px;
+      border: 2px solid var(--accent-primary);
+      border-radius: 50%;
+      opacity: 0;
+      animation: pulse 2s ease-out infinite;
+    }
+    
+    @keyframes pulse {
+      0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; }
+      100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
+    }
+    
+    .track-btn {
+      background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-left: 10px;
+      transition: transform 0.2s, box-shadow 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    
+    .track-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 212, 255, 0.4);
+    }
+    
+    .arrival-actions {
+      margin-top: 8px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    
+    .eta-update {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      font-style: italic;
+    }
+    
+    .route-path {
+      stroke-dasharray: 10;
+      animation: dash 30s linear infinite;
+    }
+    
+    @keyframes dash {
+      to { stroke-dashoffset: -1000; }
+    }
+
+    /* Mobile */
+    @media (max-width: 640px) {
+      .stops-list {
+        grid-template-columns: 1fr;
+      }
+      
+      .theme-grid {
+        grid-template-columns: repeat(3, 1fr);
+      }
+      
+      .app-header h1 {
+        font-size: 20px;
+      }
+      
+      .recent-list {
+        gap: 8px;
+      }
+      
+      .recent-item {
+        min-width: 140px;
+        padding: 10px 12px;
+      }
+
+      .bus-map-container {
+        height: 350px;
+      }
+
+      .bus-tracker-header h2 {
+        font-size: 1rem;
+      }
+
+      .arrival-main {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
+
+      .arrival-route {
+        font-size: 18px;
+        min-width: 50px;
+      }
+
+      .arrival-time {
+        font-size: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="app-header glass">
+    <h1 data-i18n="app.title">Transit Nearby</h1>
+    <div class="header-actions">
+      <button id="settingsBtn" class="btn" title="Settings">⚙ <span data-i18n="btn.settings">Settings</span></button>
+      <button id="refreshBtn" class="btn" title="Refresh">⟳ <span data-i18n="btn.refresh">Refresh</span></button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section id="recentStops" class="recent-stops hidden">
+      <h3 data-i18n="recent.title">Recent Stops</h3>
+      <div class="recent-list" id="recentList"></div>
+    </section>
+
+    <section class="status-panel glass" id="statusPanel">
+      <div id="locInfo" data-i18n="status.gettingLoc">Getting location...</div>
+      <div id="coords"></div>
+      <div id="notice" class="muted"></div>
+    </section>
+
+    <section id="stopsList" class="stops-list"></section>
+  </main>
+
+  <div id="settingsModal" class="modal">
+    <div class="modal-content glass">
+      <h2 data-i18n="settings.title">Settings</h2>
+      
+      <div class="setting-group">
+        <label data-i18n="settings.language">Language:</label>
+        <div class="language-selector" id="languageSelector">
+          <div class="muted" style="padding:10px;">Loading languages...</div>
+        </div>
+        
+        <div id="langActions" style="margin-top:10px; display:flex; gap:8px;">
+          <button id="downloadTemplateBtn" class="btn small" style="flex:1;">
+            📥 Download template
+          </button>
+          <input type="file" id="langFileInput" accept=".json" style="display:none">
+          <button id="addLangBtn" class="btn small" style="flex:1;" data-i18n="settings.addLanguage">
+            + Add Language
+          </button>
+        </div>
+        
+        <div id="langStatus" class="small muted" style="margin-top:8px;"></div>
+      </div>
+
+      <div class="setting-group">
+        <label data-i18n="settings.theme">Theme Color:</label>
+        <div class="theme-grid" id="themeGrid">
+          <div class="theme-option" data-theme="cyan" style="--theme-color: #00d4ff;"></div>
+          <div class="theme-option" data-theme="purple" style="--theme-color: #b829dd;"></div>
+          <div class="theme-option" data-theme="green" style="--theme-color: #00ff88;"></div>
+          <div class="theme-option" data-theme="orange" style="--theme-color: #ff9500;"></div>
+          <div class="theme-option" data-theme="pink" style="--theme-color: #ff2d55;"></div>
+          <div class="theme-option" data-theme="gold" style="--theme-color: #ffd700;"></div>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <label><span data-i18n="settings.distance">Search Distance (m)</span>: <span id="distanceValue" class="accent-value">300</span></label>
+        <input id="distanceRange" type="range" min="50" max="2000" step="50" />
+      </div>
+
+      <div class="setting-group">
+        <button id="toggleLogs" class="btn small" style="width:100%; margin-top:10px;" data-i18n="settings.showLogs">
+          Show Debug Logs
+        </button>
+      </div>
+      
+      <div id="logsPanel" class="logs-panel hidden">
+        <pre id="diag" class="small" style="white-space:pre-wrap;max-height:200px;overflow:auto;"></pre>
+      </div>
+
+      <div class="danger-zone">
+        <label style="color: var(--danger); font-weight: 600;">⚠️ Danger Zone</label>
+        <button id="clearCacheBtn" class="btn danger" style="width:100%; margin-top:8px;">
+          🗑️ Clear Cache & Reload
+        </button>
+        <div class="small muted" style="margin-top:5px;">Clear all settings and reload app</div>
+      </div>
+
+      <div class="modal-actions">
+        <button id="saveSettings" class="btn primary" data-i18n="btn.save">Save</button>
+        <button id="closeSettings" class="btn" data-i18n="btn.close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="detailsModal" class="modal">
+    <div class="modal-content glass" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
+      <div class="details-header">
+        <div>
+          <h2 id="detailStopName">Stop Name</h2>
+          <div class="stop-number" id="detailStopNumber">Stop #00000</div>
+        </div>
+        <button id="closeDetails" class="btn small">✕</button>
+      </div>
+      <div id="detailContent" class="details-content"></div>
+    </div>
+  </div>
+
+  <!-- Bus Tracking Modal -->
+  <div id="busTrackerModal" class="modal bus-tracker-modal">
+    <div class="modal-content glass">
+      <div class="bus-tracker-header">
+        <div>
+          <h2>🚌 <span id="trackerRoute">Route</span> → <span id="trackerStop">Stop</span></h2>
+          <div class="bus-tracker-info">
+            <span class="bus-status-badge" id="trackerStatus">Active</span>
+            <span id="trackerETA">Arriving in -- min</span>
+          </div>
+        </div>
+        <button id="closeTracker" class="btn small" style="background: rgba(255,255,255,0.2); color: white; border: none;">✕</button>
+      </div>
+      <div id="busMap" class="bus-map-container"></div>
+      <div style="padding: 15px; background: rgba(0,0,0,0.3); border-top: 1px solid var(--glass-border);">
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem;">
+          <span class="muted" data-i18n="tracker.updating">Updates every 15 seconds</span>
+          <span id="lastUpdate" class="muted">Last update: never</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <template id="stopCardTemplate">
+    <article class="stop-card glass" data-stop-key="">
+      <div class="stop-main">
+        <div class="stop-title">
+          <h3 class="stop-name"></h3>
+          <div class="stop-number muted"></div>
+        </div>
+        <div class="stop-meta">
+          <div class="stop-distance muted"></div>
+          <div class="stop-next-time"></div>
+        </div>
+      </div>
+      <div class="stop-routes muted small"></div>
+    </article>
+  </template>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  
+  <script>
+  // ====== CONFIG & STATE ======
+  const API_KEY = 'IG8tEeFkWiH_0spaBXyg';
+  const API_BASE = 'https://api.winnipegtransit.com/v4/';
+  const IP_GEO_URL = 'https://ipapi.co/json/';
+  
+  let currentPos = null;
+  let stopsData = [];
+  let refreshTimer = null;
+  const stopIntervals = new Map();
+  
+  let languages = {};
+  let currentLang = 'auto';
+  let templateFile = null;
+  
+  let busTrackerMap = null;
+  let busMarker = null;
+  let stopMarker = null;
+  let routeLine = null;
+  let trackerInterval = null;
+  let currentTracking = null;
+  
+  const config = {
+    distance: 300,
+    lang: 'auto',
+    theme: 'cyan',
+    showLogs: false,
+    recentStops: []
+  };
+
+  // ====== ALL 15 LANGUAGES BUILT-IN ======
+  const defaultLanguages = {
+    "en": {
+      "meta": {
+        "name": "English",
+        "code": "en",
+        "flag": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAACXBIWXMAAAsTAAALEwEAmpwYAAABS0lEQVR4nO2VP0sDMRiHD4o6iyDo5Kr0A4jlOC0O0iLWwanQ0Toogrr004iLuKoIdXIQP4VScY/Vuy3p3f0kFv8MBmuKXE5/D7wQkrzkfXK5xPMIIYSQvwB8D4OEeAp/NTBgHRQQFAgpwC8gvomofYzo7DCfAo8PHSSrk0irE+h2bvMjoHaXEV5fQLZq7zm6rfv0mPMCydqUMTepTbsvENdnjblxfc59AdVcMOaqrZK7Amo7QHR5ArlfMebKgyqeb9qQeyvuCSAo9OcsjRhz0/JYvx0U3BCQn24a25Ct9ewE3u562+JT/Ubc32V7hPRraysQnR9le4T0D6l2Fq0FepvzCK9OKTDUEbIR+apwkfU1+pPFnXzIhF68PIq0Mo54Ywa9RvFjxxvF1z49puc4KyAMxdjkgAL+8AI2AQr4FAAF/P8oQAghhHg55AU/H+CYg+VqtwAAAABJRU5ErkJggg=="
+      },
+      "translations": {
+        "app.title": "Transit Nearby",
+        "btn.settings": "Settings",
+        "btn.refresh": "Refresh",
+        "btn.save": "Save",
+        "btn.close": "Close",
+        "btn.details": "Details",
+        "btn.track": "🗺️ Track",
+        "status.gettingLoc": "Getting location...",
+        "status.location": "Location: {method}",
+        "status.found": "Found {count} stops within {distance} m",
+        "status.error": "Error loading stops",
+        "stop.number": "Stop #{id}",
+        "stop.distance": "{dist} m away",
+        "stop.routes": "Routes: {routes}",
+        "routes.empty": "No routes",
+        "time.min": "{n} min",
+        "time.hour": "{h}h {m}min",
+        "time.now": "Now",
+        "arrival.bike": "🚲 Bike rack",
+        "arrival.noBike": "No bike rack",
+        "details.scheduled": "Scheduled",
+        "details.estimated": "Estimated",
+        "recent.title": "Recent Stops",
+        "settings.title": "Settings",
+        "settings.language": "Language",
+        "settings.addLanguage": "+ Add Language",
+        "settings.theme": "Theme Color",
+        "settings.distance": "Search Distance (m)",
+        "settings.showLogs": "Show Debug Logs",
+        "tracker.arriving": "Arriving",
+        "tracker.arrived": "Arrived!",
+        "tracker.minutes": "min",
+        "tracker.updating": "Updating...",
+        "diag.loading": "Loading...",
+        "error.location": "Could not determine location"
+      }
+    },
+    "uk": {
+      "meta": {
+        "name": "Українська",
+        "code": "uk",
+        "flag": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2IDQiPjxyZWN0IHdpZHRoPSI2IiBoZWlnaHQ9IjIiIGZpbGw9IiMwMDVCQkIiLz48cmVjdCB5PSIyIiB3aWR0aD0iNiIgaGVpZ2h0PSIyIiBmaWxsPSIjRkZENzAwIi8+PC9zdmc+"
+      },
+      "translations": {
+        "app.title": "Транспорт Поруч",
+        "btn.settings": "Налаштування",
+        "btn.refresh": "Оновити",
+        "btn.save": "Зберегти",
+        "btn.close": "Закрити",
+        "btn.details": "Деталі",
+        "btn.track": "🗺️ Стежити",
+        "status.gettingLoc": "Отримання розташування...",
+        "status.location": "Розташування: {method}",
+        "status.found": "Знайдено {count} зупинок в радіусі {distance} м",
+        "status.error": "Помилка завантаження зупинок",
+        "stop.number": "Зупинка #{id}",
+        "stop.distance": "{dist} м звідси",
+        "stop.routes": "Маршрути: {routes}",
+        "routes.empty": "Немає маршрутів",
+        "time.min": "{n} хв",
+        "time.hour": "{h}год {m}хв",
+        "time.now": "Зараз",
+        "arrival.bike": "🚲 Місце для велосипеда",
+        "arrival.noBike": "Немає місця для велосипеда",
+        "details.scheduled": "За розкладом",
+        "details.estimated": "Очікуваний",
+        "recent.title": "Недавні зупинки",
+        "settings.title": "Налаштування",
+        "settings.language": "Мова",
+        "settings.addLanguage": "+ Додати мову",
+        "settings.theme": "Колір теми",
+        "settings.distance": "Відстань пошуку (м)",
+        "settings.showLogs": "Показати журнали налагодження",
+        "tracker.arriving": "Прибуває",
+        "tracker.arrived": "Прибув!",
+        "tracker.minutes": "хв",
+        "tracker.updating": "Оновлення...",
+        "diag.loading": "Завантаження...",
+        "error.location": "Не вдалося визначити розташування"
+      }
+    },
+    "tl": {
+      "meta": {
+        "name": "Tagalog",
+        "code": "tl",
+        "flag": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzIDIiPjxyZWN0IGZpbGw9IiMwMDM4QTgiIHdpZHRoPSIzIiBoZWlnaHQ9IjEiLz48cmVjdCBmaWxsPSIjQ0UxMTI2IiB5PSIxIiB3aWR0aD0iMyIgaGVpZ2h0PSIxIi8+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0wLDAgTDAsMiBMMS41LDEgWiIvPjxjaXJjbGUgZmlsbD0iI0ZDRDExNiIgY3g9IjAuNSIgY3k9IjEiIHI9IjAuMTUiLz48L3N2Zz4="
+      },
+      "translations": {
+        "app.title": "Transportasyon Malapit",
+        "btn.settings": "Mga Setting",
+        "btn.refresh": "I-refresh",
+        "btn.save": "I-save",
+        "btn.close": "Isara",
+        "btn.details": "Mga Detalye",
+        "btn.track": "🗺️ Subaybayan",
+        "status.gettingLoc": "Kumukuha ng lokasyon...",
+        "status.location": "Lokasyon: {method}",
+        "status.found": "Nakita ang {count} na hintuan sa loob ng {distance} m",
+        "status.error": "Error sa pag-load ng mga hintuan",
+        "stop.number": "Hintuan #{id}",
+        "stop.distance": "{dist} m ang layo",
+        "stop.routes": "Mga Ruta: {routes}",
+        "routes.empty": "Walang ruta",
+        "time.min": "{n} min",
+        "time.hour": "{h}h {m}min",
+        "time.now": "Ngayon",
+        "arrival.bike": "🚲 Rak ng bisikleta",
+        "arrival.noBike": "Walang rak ng bisikleta",
+        "details.scheduled": "Naka-iskedyul",
+        "details.estimated": "Tinataya",
+        "recent.title": "Mga Kamakailang Hintuan",
+        "settings.title": "Mga Setting",
+        "settings.language": "Wika",
+        "settings.addLanguage": "+ Magdagdag ng Wika",
+        "settings.theme": "Kulay ng Tema",
+        "settings.distance": "Distansya ng Paghahanap (m)",
+        "settings.showLogs": "Ipakita ang Debug Logs",
+        "tracker.arriving": "Dumarating",
+        "tracker.arrived": "Dumating na!",
+        "tracker.minutes": "min",
+        "tracker.updating": "Nag-a-update...",
+        "diag.loading": "Naglo-load...",
+        "error.location": "Hindi matukoy ang lokasyon"
+      }
+    },
+    "fr": {
+      "meta": {
+        "name": "Français",
+        "code": "fr",
+        "flag": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzIDIiPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjIiIGZpbGw9IiMwMDU1QTQiLz48cmVjdCB4PSIxIiB3aWR0aD0iMSIgaGVpZ2h0PSIyIiBmaWxsPSIjRkZGRkZGIi8+PHJlY3QgeD0iMiIgd2lkdGg9IjEiIGhlaWdodD0iMiIgZmlsbD0iI0VGNDQ0NCIvPjwvc3ZnPg=="
+      },
+      "translations": {
+        "app.title": "Transport à Proximité",
+        "btn.settings": "Paramètres",
+        "btn.refresh": "Rafraîchir",
+        "btn.save": "Enregistrer",
+        "btn.close": "Fermer",
+        "btn.details": "Détails",
+        "btn.track": "🗺️ Suivre",
+        "status.gettingLoc": "Obtention de la localisation...",
+        "status.location": "Localisation: {method}",
+        "status.found": "{count} arrêts trouvés dans {distance} m",
+        "status.error": "Erreur de chargement des arrêts",
+        "stop.number": "Arrêt #{id}",
+        "stop.distance": "{dist} m d'ici",
+        "stop.routes": "Lignes: {routes}",
+        "routes.empty": "Aucune ligne",
+        "time.min": "{n} min",
+        "time.hour": "{h}h {m}min",
+        "time.now": "Maintenant",
+        "arrival.bike": "🚲 Porte-vélos",
+        "arrival.noBike": "Pas de porte-vélos",
+        "details.scheduled": "Programmé",
+        "details.estimated": "Estimé",
+        "recent.title": "Arrêts Récents",
+        "settings.title": "Paramètres",
+        "settings.language": "Langue",
+        "settings.addLanguage": "+ Ajouter une langue",
+        "settings.theme": "Couleur du thème",
+        "settings.distance": "Distance de recherche (m)",
+        "settings.showLogs": "Afficher les logs de débogage",
+        "tracker.arriving": "Arrivée",
+        "tracker.arrived": "Arrivé!",
+        "tracker.minutes": "min",
+        "tracker.updating": "Mise à jour...",
+        "diag.loading": "Chargement...",
+        "error.location": "Impossible de déterminer la localisation"
+      }
+    },
+    "es": {
+      "meta": {
+        "name": "Español",
+        "code": "es",
+        "flag": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzIDIiPjxyZWN0IGZpbGw9IiNBQTE1MUIiIHdpZHRoPSIzIiBoZWlnaHQ9IjAuNSIvPjxyZWN0IGZpbGw9IiNBQTE1MUIiIHk9IjEuNSIgd2lkdGg9IjMiIGhlaWdodD0iMC41Ii8+PHJlY3QgZmlsbD0iI0YxQkYwMCIgeT0iMC41IiB3aWR0aD0iMyIgaGVpZ2h0PSIxIi8+PC9zdmc+"
+      },
+      "translations": {
+        "app.title": "Transporte Cercano",
+        "btn.settings": "Configuración",
+        "btn.refresh": "Actualizar",
+        "btn.save": "Guardar",
+        "btn.close": "Cerrar",
+        "btn.details": "Detalles",
+        "btn.track": "🗺️ Seguir",
+        "status.gettingLoc": "Obteniendo ubicación...",
+        "status.location": "Ubicación: {method}",
+        "status.found": "Encontradas {count} paradas en {distance} m",
+        "status.error": "Error cargando paradas",
+        "stop.number": "Parada #{id}",
+        "stop.distance": "{dist} m de aquí",
+        "stop.routes": "Rutas: {routes}",
+        "routes.empty": "Sin rutas",
+        "time.min": "{n} min",
+        "time.hour": "{h}h {m}min",
+        "time.now": "Ahora",
+        "arrival.bike": "🚲 Portabicicletas",
+        "arrival.noBike": "Sin portabicicletas",
+        "details.scheduled": "Programado",
+        "details.estimated": "Estimado",
+        "recent.title": "Paradas Recientes",
+        "settings.title": "Configuración",
+        "settings.language": "Idioma",
+        "settings.addLanguage": "+ Añadir idioma",
+        "settings.theme": "Color del tema",
+        "settings.distance": "Distancia de búsqueda (m)",
+        "settings.showLogs": "Mostrar logs de depuración",
+        "tracker.arriving": "Llegando",
+        "tracker.arrived": "¡Llegó!",
+        "tracker.minutes": "min",
+        "tracker.updating": "Actualizando...",
+        "diag.loading": "Cargando...",
+        "error.location": "No se pudo determinar la ubicación"
+      }
+    },
+    "de": {
+      "meta": {
+        "name": "Deutsch",
+        "code": "de",
+        "flag": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1IDMiPjxyZWN0IHdpZHRoPSI1IiBoZWlnaHQ9IjEiIGZpbGw9IiMwMDAiLz48cmVjdCB5PSIxIiB3aWR0aD0iNSIgaGVpZ2h0PSIxIiBmaWxsPSIjREQwMDAwIi8+PHJlY3QgeT0iMiIgd2lkdGg9IjUiIGhlaWdodD0iMSIgZmlsbD0iI0ZGQ0UwMCIvPjwvc3ZnPg=="
+      },
+      "translations": {
+        "app.title": "ÖPNV in der Nähe",
+        "btn.settings": "Einstellungen",
+        "btn.refresh": "Aktualisieren",
+        "btn.save": "Speichern",
+        "btn.close": "Schließen",
+        "btn.details": "Details",
+        "btn.track": "🗺️ Verfolgen",
+        "status.gettingLoc": "Standort wird ermittelt...",
+        "status.location": "Standort: {method}",
+        "status.found": "{count} Haltestellen in {distance} m gefunden",
+        "status.error": "Fehler beim Laden der Haltestellen",
+        "stop.number": "Haltestelle #{id}",
+        "stop.distance": "{dist} m entfernt",
+        "stop.routes": "Linien: {routes}",
+        "routes.empty": "Keine Linien",
+        "time.min": "{n} Min",
+        "time.hour": "{h}Std {m}Min",
+        "time.now": "Jetzt",
+        "arrival.bike": "🚲 Fahrradträger",
+        "arrival.noBike": "Kein Fahrradträger",
+        "details.scheduled": "Planmäßig",
+        "details.estimated": "Geschätzt",
+        "recent.title": "Letzte Haltestellen",
+        "settings.title": "Einstellungen",
+        "settings.language": "Sprache",
+        "settings.addLanguage": "+ Sprache hinzufügen",
+        "settings.theme": "Themenfarbe",
+        "settings.distance": "Suchradius (m)",
+        "settings.showLogs": "Debug-Logs anzeigen",
+        "tracker.arriving": "Ankunft",
+        "tracker.arrived": "Angekommen!",
+        "tracker.minutes": "Min",
+        "tracker.updating": "Aktualisierung...",
+        "diag.loading": "Laden...",
+        "error.location": "Standort konnte nicht ermittelt werden"
+      }
+    },
+    "pl": {
+      "meta": {
+        "name": "Polski",
+        "code": "pl",
+        "flag": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyIDEiPjxyZWN0IGZpbGw9IiNGRkYiIHdpZHRoPSIyIiBoZWlnaHQ9IjAuNSIvPjxyZWN0IGZpbGw9IiNEQzE0M0MiIHk9IjAuNSIgd2lkdGg9IjIiIGhlaWdodD0iMC41Ii8+PC9zdmc+"
+      },
+      "translations": {
+        "app.title": "Transport w Pobliżu",
+        "btn.settings": "Ustawienia",
+        "btn.refresh": "Odśwież",
+        "btn.save": "Zapisz",
+        "btn.close": "Zamknij",
+        "btn.details": "Szczegóły",
+        "btn.track": "🗺️ Śledź",
+        "status.gettingLoc": "Pobieranie lokalizacji...",
+        "status.location": "Lokalizacja: {method}",
+        "status.found": "Znaleziono {count} przystanków w {distance} m",
+        "status.error": "Błąd ładowania przystanków",
+        "stop.number": "Przystanek #{id}",
+        "stop.distance": "{dist} m stąd",
+        "stop.routes": "Linie: {routes}",
+        "routes.empty": "Brak linii",
+        "time.min": "{n} min",
+        "time.hour": "{h}h {m}min",
+        "time.now": "Teraz",
+        "arrival.bike": "🚲 Bagażnik rowerowy",
+        "arrival.noBike": "Brak bagażnika",
+        "details.scheduled": "Planowy",
+        "details.estimated": "Szacowany",
+        "recent.title": "Ostatnie przystanki",
+        "settings.title": "Ustawienia",
+        "settings.language": "Język",
+        "settings.addLanguage": "+ Dodaj język",
+        "settings.theme": "Kolor motywu",
+        "settings.distance": "Odległość wyszukiwania (m)",
+        "settings.showLogs": "Pokaż logi debugowania",
+        "tracker.arriving": "Przyjazd",
+        "tracker.arrived": "Przybył!",
+        "tracker.minutes": "min",
+        "tracker.updating": "Aktualizacja...",
+        "diag.loading": "Ładowanie...",
+        "error.location": "Nie można określić lokalizacji"
+      }
+    },
+    "pa": {
+      "meta": {
+        "name": "ਪੰਜਾਬੀ (Punjabi)",
+        "code": "pa",
+        "flag": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzIDIiPjxyZWN0IGZpbGw9IiNGRjk5MzIiIHdpZHRoPSIzIiBoZWlnaHQ9IjAuNjciLz48cmVjdCBmaWxsPSIjRkZGIiB5PSIwLjY3IiB3aWR0aD0iMyIgaGVpZ2h0PSIwLjY2Ii8+PHJlY3QgZmlsbD0iIzEzODgwOCIgeT0iMS4zMyIgd2lkdGg9IjMiIGhlaWdodD0iMC42NyIvPjxjaXJjbGUgY3g9IjEuNSIgY3k9IjEiIHI9IjAuMiIgZmlsbD0iIzAwMDA4OCIvPjwvc3ZnPg=="
+      },
+      "translations": {
+        "app.title": "ਨੇੜਲਾ ਟਰਾਂਜਿਟ",
+        "btn.settings": "ਸੈਟਿੰਗਾਂ",
+        "btn.refresh": "ਤਾਜ਼ਾ ਕਰੋ",
+        "btn.save": "ਸੇਵ ਕਰੋ",
+        "btn.close": "ਬੰਦ ਕਰੋ",
+        "btn.details": "ਵੇਰਵੇ",
+        "btn.track": "🗺️ ਟਰੈਕ ਕਰੋ",
+        "status.gettingLoc": "ਟਿਕਾਣਾ ਲੱਭ ਰਿਹਾ ਹੈ...",
+        "status.location": "ਟਿਕਾਣਾ: {method}",
+        "status.found": "{distance} ਮੀਟਰ ਦੇ ਦਾਇਰੇ ਵਿੱਚ {count} ਸਟਾਪ ਮਿਲੇ",
+        "status.error": "ਸਟਾਪ ਲੋਡ ਕਰਨ ਵਿੱਚ ਗੜਬੜ",
+        "stop.number": "ਸਟਾਪ #{id}",
+        "stop.distance": "{dist} ਮੀਟਰ ਦੂਰ",
+        "stop.routes": "ਰੂਟ: {routes}",
+        "routes.empty": "ਕੋਈ ਰੂਟ ਨਹੀਂ",
+        "time.min": "{n} ਮਿੰਟ",
+        "time.hour": "{h}ਘੰਟੇ {m}ਮਿੰਟ",
+        "time.now": "ਹੁਣ",
+        "arrival.bike": "🚲 ਸਾਈਕਲ ਰੈਕ",
+        "arrival.noBike": "ਕੋਈ ਸਾਈਕਲ ਰੈਕ ਨਹੀਂ",
+        "details.scheduled": "ਨਿਰਧਾਰਤ",
+        "details.estimated": "ਅਨੁਮਾਨਿਤ",
+        "recent.title": "ਹਾਲੀਆ ਸਟਾਪ",
+        "settings.title": "ਸੈਟਿੰਗਾਂ",
+        "settings.language": "ਭਾਸ਼ਾ",
+        "settings.addLanguage": "+ ਭਾਸ਼ਾ ਸ਼ਾਮਲ ਕਰੋ",
+        "settings.theme": "ਥੀਮ ਰੰਗ",
+        "settings.distance": "ਖੋਜ ਦੀ ਦੂਰੀ (ਮੀਟਰ)",
+        "settings.showLogs": "ਡੀਬੱਗ ਲਾਗ ਦਿਖਾਓ",
+        "tracker.arriving": "ਪਹੁੰਚ ਰਿਹਾ ਹੈ",
+        "tracker.arrived": "ਪਹੁੰਚ ਗਿਆ!",
+        "tracker.minutes": "ਮਿੰਟ",
+        "tracker.updating": "ਅਪਡੇਟ ਹੋ ਰਿਹਾ ਹੈ...",
+        "diag.loading": "ਲੋਡ ਹੋ ਰਿਹਾ ਹੈ...",
+        "error.location": "ਟਿਕਾਣਾ ਨਿਰਧਾਰਿਤ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਿਆ"
+      }
+    },
+    "hi": {
+      "meta": {
+        "name": "हिन्दी (Hindi)",
+        "code": "hi",
+        "flag": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzIDIiPjxyZWN0IGZpbGw9IiNGRjk5MzIiIHdpZHRoPSIzIiBoZWlnaHQ9IjAuNjciLz48cmVjdCBmaWxsPSIjRkZGIiB5PSIwLjY3IiB3aWR0aD0iMyIgaGVpZ2h0PSIwLjY2Ii8+PHJlY3QgZmlsbD0iIzEzODgwOCIgeT0iMS4zMyIgd2lkdGg9IjMiIGhlaWdodD0iMC42NyIvPjxjaXJjbGUgY3g9IjEuNSIgY3k9IjEiIHI9IjAuMiIgZmlsbD0iIzAwMDA4OCIvPjwvc3ZnPg=="
+      },
+      "translations": {
+        "app.title": "पास का परिवहन",
+        "btn.settings": "सेटिंग्स",
+        "btn.refresh": "रीफ्रेश",
+        "btn.save": "सहेजें",
+        "btn.close": "बंद करें",
+        "btn.details": "विवरण",
+        "btn.track": "🗺️ ट्रैक करें",
+        "status.gettingLoc": "स्थान प्राप्त कर रहे हैं...",
+        "status.location": "स्थान: {method}",
+        "status.found": "{distance} मीटर के भीतर {count} स्टॉप मिले",
+        "status.error": "स्टॉप लोड करने में त्रुटि",
+        "stop.number": "स्टॉप #{id}",
+        "stop.distance": "{dist} मीटर दूर",
+        "stop.routes": "मार्ग: {routes}",
+        "routes.empty": "कोई मार्ग नहीं",
+        "time.min": "{n} मिनट",
+        "time.hour": "{h}घंटे {m}मिनट",
+        "time.now": "अब",
+        "arrival.bike": "🚲 साइकिल रैक",
+        "arrival.noBike": "कोई साइकिल रैक नहीं",
+        "details.scheduled": "अनुसूचित",
+        "details.estimated": "अनुमानित",
+        "recent.title": "हालिया स्टॉप",
+        "settings.title": "सेटिंग्स",
+        "settings.language": "भाषा",
+        "settings.addLanguage": "+ भाषा जोड़ें",
+        "settings.theme": "थीम रंग",
+        "settings.distance": "खोज दूरी (मीटर)",
+        "settings.showLogs": "डीबग लॉग दिखाएं",
+        "tracker.arriving": "आगमन",
+        "tracker.arrived": "पहुंच गया!",
+        "tracker.minutes": "मिनट",
+        "tracker.updating": "अपडेट हो रहा है...",
+        "diag.loading": "लोड हो रहा है...",
+        "error.location": "स्थान निर्धारित नहीं किया जा सका"
+      }
+    },
+    "zh": {
+      "meta": {
+        "name": "中文 (Chinese)",
+        "code": "zh",
+        "flag": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzIDIiPjxyZWN0IGZpbGw9IiNERTI5MTAiIHdpZHRoPSIzIiBoZWlnaHQ9IjIiLz48cG9seWdvbiBmaWxsPSIjRkZERTAwIiBwb2ludHM9IjAuNiwwLjQgMC43LDAuNyAxLjAsMC43IDAuNzUsMC45IDAuODUsMS4yIDAuNiwxLjAgMC4zNSwxLjIgMC40NSwwLjkgMC4yLDAuNyAwLjUsMC43Ii8+PC9zdmc+"
+      },
+      "translations": {
+        "app.title": "附近交通",
+        "btn.settings": "设置",
+        "btn.refresh": "刷新",
+        "btn.save": "保存",
+        "btn.close": "关闭",
+        "btn.details": "详情",
+        "btn.track": "🗺️ 追踪",
+        "status.gettingLoc": "正在获取位置...",
+        "status.location": "位置: {method}",
+        "status.found": "在 {distance} 米范围内找到 {count} 个站点",
+        "status.error": "加载站点出错",
+        "stop.number": "站点 #{id}",
+        "stop.distance": "距离 {dist} 米",
+        "stop.routes": "路线: {routes}",
+        "routes.empty": "无路线",
+        "time.min": "{n} 分钟",
+        "time.hour": "{h}小时 {m}分钟",
+        "time.now": "现在",
+        "arrival.bike": "🚲 自行车架",
+        "arrival.noBike": "无自行车架",
+        "details.scheduled": "已计划",
+        "details.estimated": "预计",
+        "recent.title": "最近站点",
+        "settings.title": "设置",
+        "settings.language": "语言",
+        "settings.addLanguage": "+ 添加语言",
+        "settings.theme": "主题颜色",
+        "settings.distance": "搜索距离 (米)",
+        "settings.showLogs": "显示调试日志",
+        "tracker.arriving": "即将到达",
+        "tracker.arrived": "已到达!",
+        "tracker.minutes": "分钟",
+        "tracker.updating": "更新中...",
+        "diag.loading": "加载中...",
+        "error.location": "无法确定位置"
+      }
+    },
+    "ar": {
+      "meta": {
+        "name": "العربية (Arabic)",
+        "code": "ar",
+        "flag": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzIDIiPjxyZWN0IGZpbGw9IiMwMDZDMzUiIHdpZHRoPSIzIiBoZWlnaHQ9IjIiLz48dGV4dCB4PSIxLjUiIHk9IjEuMiIgZm9udC1zaXplPSIwLjQiIGZpbGw9IiNGRkYiIHRleHQtYW5jaG9yPSJtaWRkbGUiPuKAiyDYtNiq2YjYrtivPC90ZXh0Pjwvc3ZnPg=="
+      },
+      "translations": {
+        "app.title": "النقل القريب",
+        "btn.settings": "الإعدادات",
+        "btn.refresh": "تحديث",
+        "btn.save": "حفظ",
+        "btn.close": "إغلاق",
+        "btn.details": "التفاصيل",
+        "btn.track": "🗺️ تتبع",
+        "status.gettingLoc": "جارِ الحصول على الموقع...",
+        "status.location": "الموقع: {method}",
+        "status.found": "تم العثور على {count} موقف ضمن {distance} م",
+        "status.error": "خطأ في تحميل المواقف",
+        "stop.number": "موقف #{id}",
+        "stop.distance": "{dist} م من هنا",
+        "stop.routes": "الطرق: {routes}",
+        "routes.empty": "لا توجد طرق",
+        "time.min": "{n} دقيقة",
+        "time.hour": "{h}س {m}د",
+        "time.now": "الآن",
+        "arrival.bike": "🚲 حامل الدراجات",
+        "arrival.noBike": "لا يوجد حامل دراجات",
+        "details.scheduled": "مجدول",
+        "details.estimated": "متوقع",
+        "recent.title": "المواقف الأخيرة",
+        "settings.title": "الإعدادات",
+        "settings.language": "اللغة",
+        "settings.addLanguage": "+ إضافة لغة",
+        "settings.theme": "لون السمة",
+        "settings.distance": "مسافة البحث (م)",
+        "settings.showLogs": "إظهار سجلات التصحيح",
+        "tracker.arriving": "الوصول",
+        "tracker.arrived": "وصل!",
+        "tracker.minutes": "دقيقة",
+        "tracker.updating": "جاري التحديث...",
+        "diag.loading": "جاري التحميل...",
+        "error.location": "تعذر تحديد الموقع"
+      }
+    },
+    "pt": {
+      "meta": {
+        "name": "Português",
+        "code": "pt",
+        "flag": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzIDIiPjxyZWN0IGZpbGw9IiMwMDY2MDAiIHdpZHRoPSIxLjIiIGhlaWdodD0iMiIvPjxyZWN0IGZpbGw9IiNGRjAwMDAiIHg9IjEuMiIgd2lkdGg9IjEuOCIgaGVpZ2h0PSIyIi8+PGNpcmNsZSBjeD0iMS4yIiBjeT0iMSIgcj0iMC40IiBmaWxsPSIjRkZGRjAwIi8+PC9zdmc+"
+      },
+      "translations": {
+        "app.title": "Transporte Próximo",
+        "btn.settings": "Configurações",
+        "btn.refresh": "Atualizar",
+        "btn.save": "Salvar",
+        "btn.close": "Fechar",
+        "btn.details": "Detalhes",
+        "btn.track": "🗺️ Rastrear",
+        "status.gettingLoc": "Obtendo localização...",
+        "status.location": "Localização: {method}",
+        "status.found": "Encontrados {count} pontos em {distance} m",
+        "status.error": "Erro ao carregar pontos",
+        "stop.number": "Ponto #{id}",
+        "stop.distance": "{dist} m daqui",
+        "stop.routes": "Linhas: {routes}",
+        "routes.empty": "Sem linhas",
+        "time.min": "{n} min",
+        "time.hour": "{h}h {m}min",
+        "time.now": "Agora",
+        "arrival.bike": "🚲 Suporte para bicicleta",
+        "arrival.noBike": "Sem suporte",
+        "details.scheduled": "Programado",
+        "details.estimated": "Estimado",
+        "recent.title": "Pontos Recentes",
+        "settings.title": "Configurações",
+        "settings.language": "Idioma",
+        "settings.addLanguage": "+ Adicionar idioma",
+        "settings.theme": "Cor do tema",
+        "settings.distance": "Distância de busca (m)",
+        "settings.showLogs": "Mostrar logs de debug",
+        "tracker.arriving": "Chegando",
+        "tracker.arrived": "Chegou!",
+        "tracker.minutes": "min",
+        "tracker.updating": "Atualizando...",
+        "diag.loading": "Carregando...",
+        "error.location": "Não foi possível determinar a localização"
+      }
+    },
+    "it": {
+      "meta": {
+        "name": "Italiano",
+        "code": "it",
+        "flag": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzIDIiPjxyZWN0IGZpbGw9IiMwMDkyNDYiIHdpZHRoPSIxIiBoZWlnaHQ9IjIiLz48cmVjdCBmaWxsPSIjRkZGIiB4PSIxIiB3aWR0aD0iMSIgaGVpZ2h0PSIyIi8+PHJlY3QgZmlsbD0iI0NFMkIzNyIgeD0iMiIgd2lkdGg9IjEiIGhlaWdodD0iMiIvPjwvc3ZnPg=="
+      },
+      "translations": {
+        "app.title": "Trasporti Vicini",
+        "btn.settings": "Impostazioni",
+        "btn.refresh": "Aggiorna",
+        "btn.save": "Salva",
+        "btn.close": "Chiudi",
+        "btn.details": "Dettagli",
+        "btn.track": "🗺️ Traccia",
+        "status.gettingLoc": "Rilevamento posizione...",
+        "status.location": "Posizione: {method}",
+        "status.found": "Trovate {count} fermate entro {distance} m",
+        "status.error": "Errore caricamento fermate",
+        "stop.number": "Fermata #{id}",
+        "stop.distance": "{dist} m da qui",
+        "stop.routes": "Linee: {routes}",
+        "routes.empty": "Nessuna linea",
+        "time.min": "{n} min",
+        "time.hour": "{h}h {m}min",
+        "time.now": "Ora",
+        "arrival.bike": "🚲 Portabici",
+        "arrival.noBike": "Senza portabici",
+        "details.scheduled": "Programmato",
+        "details.estimated": "Stimato",
+        "recent.title": "Fermate Recenti",
+        "settings.title": "Impostazioni",
+        "settings.language": "Lingua",
+        "settings.addLanguage": "+ Aggiungi lingua",
+        "settings.theme": "Colore tema",
+        "settings.distance": "Distanza ricerca (m)",
+        "settings.showLogs": "Mostra log di debug",
+        "tracker.arriving": "In arrivo",
+        "tracker.arrived": "Arrivato!",
+        "tracker.minutes": "min",
+        "tracker.updating": "Aggiornamento...",
+        "diag.loading": "Caricamento...",
+        "error.location": "Impossibile determinare la posizione"
+      }
+    },
+    "vi": {
+      "meta": {
+        "name": "Tiếng Việt",
+        "code": "vi",
+        "flag": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzIDIiPjxyZWN0IGZpbGw9IiNEQTAyMEUiIHdpZHRoPSIzIiBoZWlnaHQ9IjIiLz48cG9seWdvbiBmaWxsPSIjRkZGRjAwIiBwb2ludHM9IjEuNSwwLjUgMS42LDAuOSAyLDAuOSAxLjcsMS4xIDEuOCwxLjUgMS41LDEuMyAxLjIsMS41IDEuMywxLjEgMSwwLjkgMS40LDAuOSIvPjwvc3ZnPg=="
+      },
+      "translations": {
+        "app.title": "Giao thông Gần đây",
+        "btn.settings": "Cài đặt",
+        "btn.refresh": "Làm mới",
+        "btn.save": "Lưu",
+        "btn.close": "Đóng",
+        "btn.details": "Chi tiết",
+        "btn.track": "🗺️ Theo dõi",
+        "status.gettingLoc": "Đang lấy vị trí...",
+        "status.location": "Vị trí: {method}",
+        "status.found": "Tìm thấy {count} điểm dừng trong {distance} m",
+        "status.error": "Lỗi tải điểm dừng",
+        "stop.number": "Điểm dừng #{id}",
+        "stop.distance": "{dist} m từ đây",
+        "stop.routes": "Tuyến: {routes}",
+        "routes.empty": "Không có tuyến",
+        "time.min": "{n} phút",
+        "time.hour": "{h}giờ {m}phút",
+        "time.now": "Bây giờ",
+        "arrival.bike": "🚲 Giá để xe đạp",
+        "arrival.noBike": "Không có giá để xe",
+        "details.scheduled": "Theo lịch trình",
+        "details.estimated": "Dự kiến",
+        "recent.title": "Điểm dừng gần đây",
+        "settings.title": "Cài đặt",
+        "settings.language": "Ngôn ngữ",
+        "settings.addLanguage": "+ Thêm ngôn ngữ",
+        "settings.theme": "Màu chủ đề",
+        "settings.distance": "Khoảng cách tìm kiếm (m)",
+        "settings.showLogs": "Hiển thị nhật ký gỡ lỗi",
+        "tracker.arriving": "Đang đến",
+        "tracker.arrived": "Đã đến!",
+        "tracker.minutes": "phút",
+        "tracker.updating": "Đang cập nhật...",
+        "diag.loading": "Đang tải...",
+        "error.location": "Không thể xác định vị trí"
+      }
+    },
+    "ko": {
+      "meta": {
+        "name": "한국어 (Korean)",
+        "code": "ko",
+        "flag": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzIDIiPjxyZWN0IGZpbGw9IiNmZmZmZmYiIHdpZHRoPSIzIiBoZWlnaHQ9IjIiLz48Y2lyY2xlIGN4PSIxLjUiIGN5PSIxIiByPSIwLjQiIGZpbGw9IiMwMDQ3QTAiLz48cGF0aCBkPSJNMS41LDAuNiBBMC40LDAuNCAwIDAgMSAxLjUsMS40IEEwLjIsMC4yIDAgMCAwIDEuNSwxIEEwLjIsMC4yIDAgMCAwIDEuNSwwLjYiIGZpbGw9IiNDRDJFM0EiLz48L3N2Zz4="
+      },
+      "translations": {
+        "app.title": "근처 교통",
+        "btn.settings": "설정",
+        "btn.refresh": "새로고침",
+        "btn.save": "저장",
+        "btn.close": "닫기",
+        "btn.details": "상세정보",
+        "btn.track": "🗺️ 추적",
+        "status.gettingLoc": "위치 가져오는 중...",
+        "status.location": "위치: {method}",
+        "status.found": "{distance}m 내 {count}개 정류장 찾음",
+        "status.error": "정류장 로드 오류",
+        "stop.number": "정류장 #{id}",
+        "stop.distance": "{dist}m 거리",
+        "stop.routes": "노선: {routes}",
+        "routes.empty": "노선 없음",
+        "time.min": "{n}분",
+        "time.hour": "{h}시간 {m}분",
+        "time.now": "지금",
+        "arrival.bike": "🚲 자전거 거치대",
+        "arrival.noBike": "자전거 거치대 없음",
+        "details.scheduled": "예정",
+        "details.estimated": "예상",
+        "recent.title": "최근 정류장",
+        "settings.title": "설정",
+        "settings.language": "언어",
+        "settings.addLanguage": "+ 언어 추가",
+        "settings.theme": "테마 색상",
+        "settings.distance": "검색 거리 (m)",
+        "settings.showLogs": "디버그 로그 표시",
+        "tracker.arriving": "도착 중",
+        "tracker.arrived": "도착!",
+        "tracker.minutes": "분",
+        "tracker.updating": "업데이트 중...",
+        "diag.loading": "로딩 중...",
+        "error.location": "위치를 확인할 수 없음"
+      }
+    }
+  };
+
+  const LangManager = {
+    generateTemplate() {
+      templateFile = {
+        "meta": {
+          "name": "Your Language",
+          "code": "new",
+          "flag": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0MCIgZmlsbD0iIzMzMyIvPjwvc3ZnPg=="
+        },
+        "translations": {...defaultLanguages['en'].translations}
+      };
+    },
+    
+    downloadTemplate() {
+      if (!templateFile) this.generateTemplate();
+      const blob = new Blob([JSON.stringify(templateFile, null, 2)], {type: 'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'new-language.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    },
+    
+    saveToStorage() {
+      try {
+        localStorage.setItem('transitLanguages', JSON.stringify(languages));
+      } catch (e) {
+        console.error('Failed to save languages:', e);
+      }
+    },
+    
+    loadFromStorage() {
+      try {
+        const saved = localStorage.getItem('transitLanguages');
+        return saved ? JSON.parse(saved) : null;
+      } catch (e) {
+        return null;
+      }
+    },
+    
+    init() {
+      languages = {...defaultLanguages};
+      const stored = this.loadFromStorage();
+      if (stored) {
+        Object.assign(languages, stored);
+      }
+      
+      if (config.lang === 'auto' || !config.lang) {
+        const sysLang = navigator.language || navigator.userLanguage || 'en';
+        currentLang = this.findBestMatch(sysLang);
+        console.log('Auto-detected language:', sysLang, '->', currentLang);
+      } else {
+        currentLang = config.lang;
+      }
+      
+      if (!languages[currentLang]) {
+        currentLang = 'en';
+      }
+    },
+    
+    findBestMatch(code) {
+      if (!code) return 'en';
+      if (languages[code]) return code;
+      const lang = code.split('-')[0];
+      if (languages[lang]) return lang;
+      const available = Object.keys(languages);
+      return available.find(k => k.startsWith(lang)) || 'en';
+    },
+    
+    addLanguage(code, data) {
+      languages[code] = data;
+      this.saveToStorage();
+    },
+    
+    t(key, params = {}) {
+      const langData = languages[currentLang] || languages['en'];
+      if (!langData) return key;
+      let text = langData.translations[key];
+      if (text === undefined) {
+        text = languages['en']?.translations[key] || key;
+      }
+      if (params && typeof params === 'object') {
+        Object.keys(params).forEach(k => {
+          text = text.replace(new RegExp(`{${k}}`, 'g'), params[k]);
+        });
+      }
+      return text;
+    },
+    
+    getAvailable() {
+      const list = Object.entries(languages).map(([code, data]) => ({
+        code,
+        ...data.meta
+      }));
+      
+      list.unshift({
+        code: 'auto',
+        name: '🌐 Auto (System Default)',
+        flag: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiPjxjaXJjbGUgY3g9IjEyIiBjeT0iMTIiIHI9IjEwIi8+PHBhdGggZD0iTTIgMTJoMjBNMTIgMmE2NSA2NSAwIDAgMSAwIDIwIi8+PC9zdmc+'
+      });
+      
+      return list;
+    },
+    
+    setLanguage(code) {
+      if (code === 'auto') {
+        config.lang = 'auto';
+        const sysLang = navigator.language || navigator.userLanguage || 'en';
+        currentLang = this.findBestMatch(sysLang);
+        return true;
+      }
+      if (languages[code]) {
+        currentLang = code;
+        config.lang = code;
+        return true;
+      }
+      return false;
+    },
+    
+    getCurrentLangName() {
+      if (config.lang === 'auto') return '🌐 Auto';
+      return languages[currentLang]?.meta?.name || currentLang;
+    }
+  };
+
+  function loadConfig() {
+    try {
+      const saved = localStorage.getItem('transitConfig');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        Object.assign(config, parsed);
+        config.distance = Number(config.distance) || 300;
+      }
+    } catch (e) {
+      console.error('Failed to load config:', e);
+    }
+  }
+
+  function saveConfig() {
+    try {
+      localStorage.setItem('transitConfig', JSON.stringify(config));
+    } catch (e) {
+      console.error('Failed to save config:', e);
+    }
+  }
+
+  function clearAllCache() {
+    if (confirm('Clear all settings and reload?')) {
+      localStorage.removeItem('transitConfig');
+      localStorage.removeItem('transitLanguages');
+      location.reload();
+    }
+  }
+
+  function addRecentStop(stop) {
+    if (!config.recentStops) config.recentStops = [];
+    const existing = config.recentStops.find(s => s.key === stop.key);
+    if (existing) {
+      existing.timestamp = Date.now();
+      existing.routes = stop.routes;
+    } else {
+      config.recentStops.unshift({
+        key: stop.key,
+        name: stop.name,
+        routes: stop.routes,
+        timestamp: Date.now()
+      });
+    }
+    config.recentStops = config.recentStops.slice(0, 3);
+    saveConfig();
+    renderRecentStops();
+  }
+
+  function renderRecentStops() {
+    const container = document.getElementById('recentStops');
+    const list = document.getElementById('recentList');
+    if (!container || !list) return;
+    
+    if (!config.recentStops || config.recentStops.length === 0) {
+      container.classList.add('hidden');
+      return;
+    }
+    container.classList.remove('hidden');
+    list.innerHTML = config.recentStops.map(s => `
+      <div class="recent-item" onclick="window.loadStopByKey('${s.key}')">
+        <div class="recent-name">${s.name}</div>
+        <div class="recent-routes">${s.routes.slice(0, 3).join(', ')}</div>
+      </div>
+    `).join('');
+  }
+
+  window.loadStopByKey = async function(key) {
+    try {
+      const stopData = await fetchStopById(key);
+      if (stopData) {
+        showStopDetails({...stopData, _arrivals: [], _routeSchedules: []});
+        const schedule = await fetchStopSchedule(key, 20);
+        if (schedule) {
+          showStopDetails(enrichStopWithSchedule({...stopData}, schedule));
+        }
+      }
+    } catch(e) {
+      console.error(e);
+    }
+  };
+
+  function haversine(lat1, lon1, lat2, lon2) {
+    if (!lat1 || !lon1 || !lat2 || !lon2) return Infinity;
+    if (Math.abs(lat2) > 90 || Math.abs(lon2) > 180) return Infinity;
+    
+    const R = 6371000;
+    const toRad = x => x * Math.PI/180;
+    const dLat = toRad(lat2-lat1), dLon = toRad(lon2-lon1);
+    const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+    const c = 2*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R*c;
+  }
+
+  function minutesUntil(iso) {
+    if (!iso) return null;
+    const t = new Date(iso).getTime();
+    const diff = (t - Date.now()) / 60000;
+    return Math.max(0, Math.round(diff));
+  }
+
+  function formatDuration(minutes) {
+    if (minutes === null || minutes === undefined) return '—';
+    if (minutes < 1) return LangManager.t('time.now');
+    if (minutes < 60) return LangManager.t('time.min', {n: minutes});
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return LangManager.t('time.hour', {h, m});
+  }
+
+  function appendDiag(...parts) { 
+    const diag = document.getElementById('diag');
+    if (!diag) return;
+    
+    const safeParts = parts.map(p => {
+      if (typeof p === 'string') {
+        return p.replace(/api-key=[^&]+/g, 'api-key=***');
+      }
+      return JSON.stringify(p, null, 2).replace(/api-key=[^&"]+/g, 'api-key=***');
+    });
+    
+    diag.textContent = safeParts.join("\n\n") + "\n\n" + diag.textContent; 
+  }
+
+  function getRouteColorClass(routeNumber) {
+    if (!routeNumber) return '';
+    const r = String(routeNumber).toUpperCase();
+    if (r === 'BLUE') return 'route-blue';
+    if (r === 'FX3') return 'route-green';
+    if (r.startsWith('F')) return 'route-purple';
+    if (r.startsWith('D')) return 'route-yellow';
+    return '';
+  }
+
+  async function getLocation() {
+    if (navigator.geolocation) {
+      try {
+        const pos = await new Promise((res, rej) => {
+          navigator.geolocation.getCurrentPosition(res, rej, {
+            enableHighAccuracy: true, 
+            timeout: 5000,
+            maximumAge: 60000
+          });
+        });
+        return {lat: pos.coords.latitude, lon: pos.coords.longitude, method:'GPS'};
+      } catch (e) {
+        appendDiag('GPS error (using IP fallback):', e.message);
+      }
+    }
+    
+    try {
+      const r = await fetch(IP_GEO_URL);
+      const j = await r.json();
+      if (j && j.latitude && j.longitude) {
+        return {lat: Number(j.latitude), lon: Number(j.longitude), method:'IP'};
+      }
+    } catch (ee) {
+      appendDiag('IP geolocation failed:', ee.message);
+    }
+    
+    return {lat:49.867, lon:-97.1356, method:'fallback'};
+  }
+
+  async function safeJsonFetch(url) {
+    const resp = await fetch(url, {headers: {'Accept': 'application/json'}});
+    const text = await resp.text();
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${text.slice(0,200)}`);
+    return JSON.parse(text);
+  }
+
+  async function fetchStops(lat, lon, distance) {
+    const url = new URL(API_BASE + '/stops.json');
+    url.searchParams.set('lat', String(lat));
+    url.searchParams.set('lon', String(lon));
+    url.searchParams.set('distance', String(distance));
+    url.searchParams.set('api-key', API_KEY);
+    url.searchParams.set('json-camel-case', 'true');
+    appendDiag('Request:', url.toString());
+    const data = await safeJsonFetch(url.toString());
+    return data.stops || [];
+  }
+
+  async function fetchStopSchedule(stopKey, maxResults = 15) {
+    const url = new URL(API_BASE + `/stops/${stopKey}/schedule.json`);
+    url.searchParams.set('api-key', API_KEY);
+    url.searchParams.set('json-camel-case', 'true');
+    if (maxResults) url.searchParams.set('max-results', String(maxResults));
+    return (await safeJsonFetch(url.toString()))['stopSchedule'] || null;
+  }
+
+  async function fetchStopById(stopId) {
+    const url = new URL(API_BASE + `/stops/${stopId}.json`);
+    url.searchParams.set('api-key', API_KEY);
+    url.searchParams.set('json-camel-case', 'true');
+    return (await safeJsonFetch(url.toString())).stop || null;
+  }
+
+  async function fetchVehicles(routeNumber = null) {
+    const url = new URL(API_BASE + '/vehicles.json');
+    url.searchParams.set('api-key', API_KEY);
+    url.searchParams.set('json-camel-case', 'true');
+    if (routeNumber) {
+      url.searchParams.set('route', String(routeNumber));
+    }
+    const data = await safeJsonFetch(url.toString());
+    return data.vehicles || [];
+  }
+
+  function enrichStopWithSchedule(stop, scheduleData) {
+    const routeSchedules = scheduleData?.routeSchedules || [];
+    const scheduledStops = [];
+    
+    for (const rs of routeSchedules) {
+      if (!rs.scheduledStops) continue;
+      for (const ss of rs.scheduledStops) {
+        const times = ss.times || {};
+        const arrival = times.arrival?.estimated || times.arrival?.scheduled || null;
+        scheduledStops.push({ 
+          route: rs.route || {}, 
+          scheduledStop: ss, 
+          arrival,
+          departure: times.departure?.estimated || times.departure?.scheduled || null,
+          bus: ss.bus || {},
+          variant: ss.variant || {},
+          times: times
+        });
+      }
+    }
+    
+    const validArrivals = scheduledStops
+      .filter(x => x.arrival)
+      .map(x => ({...x, minutes: minutesUntil(x.arrival)}))
+      .sort((a,b) => a.minutes - b.minutes);
+      
+    return {...stop, _routeSchedules: routeSchedules, _arrivals: validArrivals};
+  }
+
+  function clearStops() {
+    const stopsListEl = document.getElementById('stopsList');
+    if (stopsListEl) stopsListEl.innerHTML = '';
+    for (const id of stopIntervals.values()) clearInterval(id);
+    stopIntervals.clear();
+  }
+
+  async function loadAndRenderStops() {
+    const notice = document.getElementById('notice');
+    try {
+      document.getElementById('locInfo').textContent = LangManager.t('status.location', {method: currentPos.method});
+      document.getElementById('coords').textContent = `Lat: ${currentPos.lat.toFixed(6)}, Lon: ${currentPos.lon.toFixed(6)}`;
+      notice.textContent = LangManager.t('diag.loading');
+      
+      const rawStops = await fetchStops(currentPos.lat, currentPos.lon, config.distance);
+
+      const enriched = rawStops.map(s => {
+        let lat = null, lon = null;
+        
+        if (s.centre && s.centre.geographic) {
+          lat = parseFloat(s.centre.geographic.latitude);
+          lon = parseFloat(s.centre.geographic.longitude);
+        } else if (s.latitude && s.longitude) {
+          lat = parseFloat(s.latitude);
+          lon = parseFloat(s.longitude);
+        } else if (s.lat && s.lon) {
+          lat = parseFloat(s.lat);
+          lon = parseFloat(s.lon);
+        }
+        
+        if (!lat || !lon || isNaN(lat) || isNaN(lon)) {
+          return null;
+        }
+        
+        const d = haversine(currentPos.lat, currentPos.lon, lat, lon);
+        return {...s, _lat: lat, _lon: lon, _distance: d};
+      }).filter(Boolean);
+
+      const withSchedules = await Promise.all(enriched.map(async s => {
+        try {
+          const schedule = await fetchStopSchedule(s.key, 10);
+          return enrichStopWithSchedule(s, schedule);
+        } catch (e) {
+          return {...s, _routeSchedules: [], _arrivals: []};
+        }
+      }));
+
+      withSchedules.sort((a,b) => a._distance - b._distance);
+      stopsData = withSchedules;
+      renderStops(withSchedules);
+      
+      notice.textContent = LangManager.t('status.found', {count: withSchedules.length, distance: config.distance});
+    } catch (e) {
+      appendDiag('Error:', e.message);
+      notice.textContent = LangManager.t('status.error') + ': ' + e.message;
+    }
+  }
+
+  function renderStops(list) {
+    clearStops();
+    const tpl = document.getElementById('stopCardTemplate');
+    const stopsListEl = document.getElementById('stopsList');
+    if (!tpl || !stopsListEl) return;
+    
+    const displayList = list.filter(s => {
+      const hasData = s._routeSchedules?.length > 0 || s._arrivals?.length > 0;
+      return hasData;
+    });
+    
+    displayList.forEach((s, index) => {
+      const node = tpl.content.cloneNode(true);
+      const card = node.querySelector('.stop-card');
+      card.dataset.stopKey = s.key;
+      card.style.animationDelay = `${index * 0.05}s`;
+      
+      card.querySelector('.stop-name').textContent = s.name || s.key;
+      card.querySelector('.stop-number').textContent = LangManager.t('stop.number', {id: s.key});
+      
+      const distText = s._distance > 100000 ? '>100km' : `${Math.round(s._distance)} m`;
+      card.querySelector('.stop-distance').textContent = s._distance > 100000 ? distText : LangManager.t('stop.distance', {dist: Math.round(s._distance)});
+      
+      const routeElements = [];
+      const routeSet = new Set();
+      for (const rs of s._routeSchedules || []) {
+        if (rs.route?.number) {
+          routeSet.add(rs.route.number);
+          const colorClass = getRouteColorClass(rs.route.number);
+          routeElements.push(`<span class="route-badge ${colorClass}">${rs.route.number}</span>`);
+        }
+      }
+      
+      const routesEl = card.querySelector('.stop-routes');
+      routesEl.innerHTML = routeElements.length > 0 ? routeElements.join(' ') : LangManager.t('routes.empty');
+      
+      const next = s._arrivals?.[0];
+      const timeEl = card.querySelector('.stop-next-time');
+      if (next) {
+        timeEl.textContent = formatDuration(next.minutes);
+        timeEl.className = 'stop-next-time ' + (next.minutes < 5 ? 'soon' : (next.minutes <= 15 ? 'warning' : 'ok'));
+      } else {
+        timeEl.textContent = '—';
+        timeEl.className = 'stop-next-time';
+      }
+      
+      card.addEventListener('click', () => {
+        addRecentStop({key: s.key, name: s.name, routes: Array.from(routeSet)});
+        showStopDetails(s);
+      });
+      
+      stopsListEl.appendChild(node);
+    });
+  }
+
+  function showStopDetails(stop) {
+    const modal = document.getElementById('detailsModal');
+    const content = document.getElementById('detailContent');
+    
+    document.getElementById('detailStopName').textContent = stop.name || LangManager.t('stop.number', {id: stop.key});
+    document.getElementById('detailStopNumber').textContent = LangManager.t('stop.number', {id: stop.key});
+    
+    let html = '<div class="details-section">';
+    html += `<div class="detail-info"><strong>${LangManager.t('stop.distance')}:</strong> ${Math.round(stop._distance)} m</div>`;
+    
+    if (stop._arrivals?.length > 0) {
+      html += `<h3>${LangManager.t('btn.details')}</h3><div class="arrivals-list">`;
+      
+      stop._arrivals.slice(0, 15).forEach((arr, idx) => {
+        const colorClass = getRouteColorClass(arr.route?.number);
+        const hasBikeRack = arr.bus?.bikeRack === true || arr.bus?.bikeRack === 'true' || arr.bus?.bikeRack === 1;
+        const bikeStatus = hasBikeRack ? LangManager.t('arrival.bike') : LangManager.t('arrival.noBike');
+        const variant = arr.variant?.name ? `<div class="variant">${arr.variant.name}</div>` : '';
+        const busNumber = arr.bus?.number || arr.bus?.key || '';
+        
+        html += `
+          <div class="arrival-detail ${colorClass}-border">
+            <div class="arrival-main">
+              <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
+                <div class="arrival-route ${colorClass}">${arr.route?.number || '?'}</div>
+                <div class="arrival-info">
+                  <div class="arrival-time">${formatDuration(arr.minutes)}</div>
+                  ${variant}
+                  <div class="arrival-meta">
+                    ${arr.times?.arrival?.estimated ? `<span class="estimated">${LangManager.t('details.estimated')}</span>` : `<span class="scheduled">${LangManager.t('details.scheduled')}</span>`}
+                    <span class="bike-status">${bikeStatus}</span>
+                    ${busNumber ? `<span>#${busNumber}</span>` : ''}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="arrival-actions">
+              <button class="track-btn" onclick="startBusTracking('${arr.route?.number}', '${busNumber}', '${stop.key}', ${stop._lat}, ${stop._lon}, ${arr.minutes})">
+                ${LangManager.t('btn.track')}
+              </button>
+              <span class="eta-update">Updated just now</span>
+            </div>
+          </div>
+        `;
+      });
+      html += '</div>';
+    } else {
+      html += `<div class="muted" style="margin-top:20px;">${LangManager.t('routes.empty')}</div>`;
+    }
+    
+    html += '</div>';
+    content.innerHTML = html;
+    modal.classList.add('open');
+  }
+
+  // ====== BUS TRACKING SYSTEM ======
+  
+  window.startBusTracking = async function(routeNumber, busNumber, stopKey, stopLat, stopLon, initialMinutes) {
+    if (!routeNumber) return;
+    
+    document.getElementById('detailsModal').classList.remove('open');
+    
+    const modal = document.getElementById('busTrackerModal');
+    modal.classList.add('open');
+    
+    document.getElementById('trackerRoute').textContent = routeNumber;
+    document.getElementById('trackerStop').textContent = LangManager.t('stop.number', {id: stopKey});
+    document.getElementById('trackerETA').textContent = `${LangManager.t('tracker.arriving')} ${formatDuration(initialMinutes)}`;
+    
+    currentTracking = {
+      routeNumber,
+      busNumber,
+      stopKey,
+      stopLat,
+      stopLon,
+      lastLat: null,
+      lastLon: null,
+      targetLat: null,
+      targetLon: null,
+      progress: 0,
+      updateTime: Date.now()
+    };
+    
+    initBusMap(stopLat, stopLon);
+    
+    await updateBusPosition();
+    
+    if (trackerInterval) clearInterval(trackerInterval);
+    trackerInterval = setInterval(updateBusPosition, 15000);
+    
+    startSmoothAnimation();
+  };
+  
+  function initBusMap(stopLat, stopLon) {
+    const mapContainer = document.getElementById('busMap');
+    
+    if (busTrackerMap) {
+      busTrackerMap.remove();
+    }
+    
+    busTrackerMap = L.map('busMap', {
+      zoomControl: false,
+      attributionControl: false
+    }).setView([stopLat, stopLon], 15);
+    
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap &copy; CARTO',
+      subdomains: 'abcd',
+      maxZoom: 19
+    }).addTo(busTrackerMap);
+    
+    const stopIcon = L.divIcon({
+      className: 'custom-stop-marker',
+      html: '<div class="stop-marker-icon"><div class="pulse-ring"></div></div>',
+      iconSize: [24, 24],
+      iconAnchor: [12, 12]
+    });
+    
+    stopMarker = L.marker([stopLat, stopLon], {icon: stopIcon, zIndexOffset: 1000}).addTo(busTrackerMap);
+    stopMarker.bindPopup(`<b>${LangManager.t('stop.number', {id: currentTracking.stopKey})}</b><br>Destination`).openPopup();
+    
+    routeLine = L.polyline([[stopLat, stopLon]], {
+      color: '#00d4ff',
+      weight: 4,
+      opacity: 0.8,
+      dashArray: '10, 10',
+      className: 'route-path'
+    }).addTo(busTrackerMap);
+  }
+  
+  async function updateBusPosition() {
+    if (!currentTracking) return;
+    
+    try {
+      document.getElementById('trackerStatus').textContent = LangManager.t('tracker.updating');
+      
+      const vehicles = await fetchVehicles(currentTracking.routeNumber);
+      
+      let bus = vehicles.find(v => v.number == currentTracking.busNumber || v.key == currentTracking.busNumber);
+      
+      if (!bus && vehicles.length > 0) {
+        bus = vehicles.reduce((closest, v) => {
+          if (!v.geographic) return closest;
+          const distToStop = haversine(
+            v.geographic.latitude, v.geographic.longitude,
+            currentTracking.stopLat, currentTracking.stopLon
+          );
+          if (!closest || distToStop < closest.dist) {
+            return {bus: v, dist: distToStop};
+          }
+          return closest;
+        }, null)?.bus || vehicles[0];
+      }
+      
+      if (bus && bus.geographic) {
+        const lat = parseFloat(bus.geographic.latitude);
+        const lon = parseFloat(bus.geographic.longitude);
+        
+        if (currentTracking.targetLat !== null) {
+          currentTracking.lastLat = currentTracking.targetLat;
+          currentTracking.lastLon = currentTracking.targetLon;
+        } else {
+          currentTracking.lastLat = lat;
+          currentTracking.lastLon = lon;
+        }
+        
+        currentTracking.targetLat = lat;
+        currentTracking.targetLon = lon;
+        currentTracking.progress = 0;
+        currentTracking.updateTime = Date.now();
+        
+        if (!busMarker) {
+          const busIcon = L.divIcon({
+            className: 'custom-bus-marker',
+            html: '<div class="bus-marker-container"><div class="bus-icon">🚌</div><div class="bus-direction-arrow"></div></div>',
+            iconSize: [40, 40],
+            iconAnchor: [20, 20]
+          });
+          
+          busMarker = L.marker([lat, lon], {icon: busIcon, zIndexOffset: 2000}).addTo(busTrackerMap);
+        }
+        
+        routeLine.setLatLngs([[lat, lon], [currentTracking.stopLat, currentTracking.stopLon]]);
+        
+        const distToStop = haversine(lat, lon, currentTracking.stopLat, currentTracking.stopLon);
+        const speed = 20 * 1000 / 3600;
+        const timeToStop = Math.ceil((distToStop / speed) / 60);
+        
+        document.getElementById('trackerETA').textContent = 
+          distToStop < 100 
+            ? LangManager.t('tracker.arrived')
+            : `${LangManager.t('tracker.arriving')} ${timeToStop} ${LangManager.t('tracker.minutes')}`;
+        
+        document.getElementById('trackerStatus').textContent = 'Active';
+        document.getElementById('trackerStatus').style.background = 'rgba(0, 255, 136, 0.3)';
+        
+        if (distToStop < 50) {
+          clearInterval(trackerInterval);
+          cancelAnimationFrame(animationFrameId);
+          busMarker.getElement()?.querySelector('.bus-icon')?.classList.remove('moving');
+        } else {
+          busMarker.getElement()?.querySelector('.bus-icon')?.classList.add('moving');
+        }
+        
+        const now = new Date();
+        document.getElementById('lastUpdate').textContent = 
+          `Last update: ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+        
+      } else {
+        document.getElementById('trackerStatus').textContent = 'No GPS data';
+        document.getElementById('trackerStatus').style.background = 'rgba(255, 71, 87, 0.3)';
+      }
+    } catch (e) {
+      console.error('Tracking error:', e);
+      document.getElementById('trackerStatus').textContent = 'Error';
+    }
+  }
+  
+  let animationFrameId = null;
+  
+  function startSmoothAnimation() {
+    const animate = () => {
+      if (!currentTracking || !busMarker || currentTracking.lastLat === null) {
+        animationFrameId = requestAnimationFrame(animate);
+        return;
+      }
+      
+      const duration = 15000;
+      const elapsed = Date.now() - currentTracking.updateTime;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      const lat = currentTracking.lastLat + (currentTracking.targetLat - currentTracking.lastLat) * progress;
+      const lon = currentTracking.lastLon + (currentTracking.targetLon - currentTracking.lastLon) * progress;
+      
+      busMarker.setLatLng([lat, lon]);
+      
+      if (busTrackerMap) {
+        const bounds = L.latLngBounds(
+          [lat, lon],
+          [currentTracking.stopLat, currentTracking.stopLon]
+        );
+        busTrackerMap.fitBounds(bounds, {padding: [50, 50], maxZoom: 16});
+      }
+      
+      animationFrameId = requestAnimationFrame(animate);
+    };
+    
+    animate();
+  }
+  
+  function stopTracking() {
+    if (trackerInterval) {
+      clearInterval(trackerInterval);
+      trackerInterval = null;
+    }
+    if (animationFrameId) {
+      cancelAnimationFrame(animationFrameId);
+      animationFrameId = null;
+    }
+    currentTracking = null;
+    busMarker = null;
+    stopMarker = null;
+    routeLine = null;
+    if (busTrackerMap) {
+      busTrackerMap.remove();
+      busTrackerMap = null;
+    }
+  }
+
+  document.getElementById('closeDetails').onclick = () => {
+    document.getElementById('detailsModal').classList.remove('open');
+  };
+
+  document.getElementById('closeTracker').onclick = () => {
+    document.getElementById('busTrackerModal').classList.remove('open');
+    stopTracking();
+  };
+
+  document.getElementById('busTrackerModal').onclick = (e) => {
+    if (e.target === document.getElementById('busTrackerModal')) {
+      document.getElementById('busTrackerModal').classList.remove('open');
+      stopTracking();
+    }
+  };
+
+  function renderLanguageSelector() {
+    const container = document.getElementById('languageSelector');
+    if (!container) return;
+    
+    const available = LangManager.getAvailable();
+    container.innerHTML = '';
+    
+    available.forEach(lang => {
+      const div = document.createElement('div');
+      const isActive = lang.code === config.lang || (config.lang === 'auto' && lang.code === 'auto');
+      
+      div.className = `lang-option ${isActive ? 'active' : ''}`;
+      
+      div.innerHTML = `
+        <img src="${lang.flag}" alt="${lang.code}" class="lang-flag" onerror="this.style.display='none'">
+        <span class="lang-name">${lang.name}</span>
+        <span class="lang-code">${lang.code}</span>
+      `;
+      
+      div.addEventListener('click', () => {
+        console.log('Switching to language:', lang.code);
+        
+        if (LangManager.setLanguage(lang.code)) {
+          saveConfig();
+          renderLanguageSelector();
+          updateTranslations();
+          if (stopsData.length > 0) renderStops(stopsData);
+          document.getElementById('langStatus').textContent = `Active: ${LangManager.getCurrentLangName()}`;
+        }
+      });
+      
+      container.appendChild(div);
+    });
+  }
+
+  function handleLanguageFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (!data.meta || !data.translations) {
+          alert('Invalid language file format. Must have "meta" and "translations"');
+          return;
+        }
+        const code = data.meta.code || file.name.replace('.json', '');
+        LangManager.addLanguage(code, data);
+        renderLanguageSelector();
+        
+        if (LangManager.setLanguage(code)) {
+          saveConfig();
+          updateTranslations();
+          if (stopsData.length > 0) renderStops(stopsData);
+        }
+        
+        alert(`Language "${data.meta.name}" added!`);
+      } catch (err) {
+        alert('Error reading file: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function applyTheme(themeName) {
+    const root = document.documentElement;
+    const themes = {
+      cyan: {primary: '#00d4ff', secondary: '#7b2cbf'},
+      purple: {primary: '#b829dd', secondary: '#6366f1'},
+      green: {primary: '#00ff88', secondary: '#10b981'},
+      orange: {primary: '#ff9500', secondary: '#f59e0b'},
+      pink: {primary: '#ff2d55', secondary: '#ec4899'},
+      gold: {primary: '#ffd700', secondary: '#fbbf24'}
+    };
+    
+    const t = themes[themeName] || themes.cyan;
+    root.style.setProperty('--accent-primary', t.primary);
+    root.style.setProperty('--accent-secondary', t.secondary);
+    root.style.setProperty('--accent-gradient', `linear-gradient(135deg, ${t.primary} 0%, ${t.secondary} 100%)`);
+  }
+
+  function updateTranslations() {
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.dataset.i18n;
+      const translated = LangManager.t(key);
+      if (translated !== key) {
+        el.textContent = translated;
+      }
+    });
+    
+    const distVal = document.getElementById('distanceValue');
+    if (distVal) {
+      distVal.textContent = config.distance;
+    }
+  }
+
+  async function init() {
+    loadConfig();
+    LangManager.init();
+    
+    applyTheme(config.theme || 'cyan');
+    renderLanguageSelector();
+    
+    document.getElementById('langStatus').textContent = `Active: ${LangManager.getCurrentLangName()}`;
+    
+    document.getElementById('downloadTemplateBtn')?.addEventListener('click', () => {
+      LangManager.downloadTemplate();
+    });
+    
+    const distanceRange = document.getElementById('distanceRange');
+    const distanceValue = document.getElementById('distanceValue');
+    
+    if (distanceRange && distanceValue) {
+      distanceRange.value = config.distance || 300;
+      distanceValue.textContent = config.distance || 300;
+      
+      distanceRange.addEventListener('input', (e) => {
+        distanceValue.textContent = e.target.value;
+        config.distance = Number(e.target.value);
+      });
+    }
+    
+    document.getElementById('themeGrid')?.querySelectorAll('.theme-option').forEach(el => {
+      el.classList.toggle('active', el.dataset.theme === (config.theme || 'cyan'));
+      el.onclick = () => {
+        document.querySelectorAll('.theme-option').forEach(t => t.classList.remove('active'));
+        el.classList.add('active');
+        config.theme = el.dataset.theme;
+        applyTheme(config.theme);
+      };
+    });
+    
+    document.getElementById('toggleLogs')?.addEventListener('click', () => {
+      const panel = document.getElementById('logsPanel');
+      if (panel) panel.classList.toggle('hidden');
+    });
+    
+    document.getElementById('settingsBtn')?.addEventListener('click', () => {
+      document.getElementById('settingsModal')?.classList.add('open');
+    });
+    
+    document.getElementById('closeSettings')?.addEventListener('click', () => {
+      document.getElementById('settingsModal')?.classList.remove('open');
+    });
+    
+    document.getElementById('saveSettings')?.addEventListener('click', () => {
+      saveConfig();
+      document.getElementById('settingsModal')?.classList.remove('open');
+      loadAndRenderStops();
+    });
+    
+    document.getElementById('refreshBtn')?.addEventListener('click', () => {
+      loadAndRenderStops();
+    });
+    
+    document.getElementById('addLangBtn')?.addEventListener('click', () => {
+      document.getElementById('langFileInput')?.click();
+    });
+    
+    document.getElementById('langFileInput')?.addEventListener('change', handleLanguageFileUpload);
+    
+    document.getElementById('clearCacheBtn')?.addEventListener('click', clearAllCache);
+    
+    document.querySelectorAll('.modal').forEach(modal => {
+      if (modal.id !== 'busTrackerModal') {
+        modal.onclick = (e) => {
+          if (e.target === modal) modal.classList.remove('open');
+        };
+      }
+    });
+    
+    updateTranslations();
+    renderRecentStops();
+    
+    currentPos = await getLocation();
+    await loadAndRenderStops();
+    
+    refreshTimer = setInterval(async () => {
+      currentPos = await getLocation();
+      await loadAndRenderStops();
+    }, 60000);
+  }
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('data:text/javascript,' + encodeURIComponent(`
+      self.addEventListener('fetch', e => e.respondWith(fetch(e.request).catch(() => caches.match(e.request))));
+    `));
+  }
+
+  init();
+  </script>
+</body>
+</html>
